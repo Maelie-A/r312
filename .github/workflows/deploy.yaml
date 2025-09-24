@@ -1,0 +1,54 @@
+name: Build and Deploy SSR to VPS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install deps
+      run: npm ci
+
+    - name: Build (SSR)
+      run: npm run build
+
+    - name: Upload dist to VPS
+      uses: appleboy/scp-action@v0.1.3
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        port: 22014
+        source: "dist/*"
+        target: "/var/www/authentification/"
+        strip_components: 1
+        rm: false
+        overwrite: true
+        debug: true
+
+    - name: Start/Reload SSR server with PM2
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        port: 22014
+        script: |
+          cd /var/www/authentification/server
+          npm ci
+          # dépendances runtime usuelles pour l'entry server (selon TP)
+          npm install send server-destroy
+          # (re)lance l'app SSR sur 8082
+          PORT=8082 pm2 start -f entry.mjs --name authentification-ssr
+          pm2 save
